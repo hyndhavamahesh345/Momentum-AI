@@ -28,12 +28,13 @@ import {
   FileText,
   Wrench,
   BookOpen,
+  Trash2,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import AnalyticsTab from "@/components/dashboard/AnalyticsTab";
 
-const MOCK_USER_ID = "user_hackathon_2026";
+import { useAuth } from "@/store/auth";
 
 // ─── Momentum Ring ─────────────────────────────────────────────────────────────
 function MomentumRing({ score, size = 72 }) {
@@ -557,12 +558,23 @@ export default function Dashboard({ params }) {
   const [replan, setReplan] = useState(null);
   const [replanLoading, setReplanLoading] = useState(false);
 
+  const { userId, openLoginModal } = useAuth();
+  
+  // Auth Guard
+  useEffect(() => {
+    if (!userId) {
+      window.location.href = "/";
+    }
+  }, [userId]);
+
   const { data: goals, isLoading: goalsLoading } = useQuery({
-    queryKey: ["goals"],
+    queryKey: ["goals", userId],
     queryFn: async () => {
-      const r = await fetch(`/api/goals?userId=${MOCK_USER_ID}`);
+      if (!userId) return [];
+      const r = await fetch(`/api/goals?userId=${userId}`);
       return r.json();
     },
+    enabled: !!userId,
   });
 
   const { data: goal, isLoading: goalLoading } = useQuery({
@@ -584,7 +596,7 @@ export default function Dashboard({ params }) {
       const r = await fetch("/api/tasks/update", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ taskId, status, userId: MOCK_USER_ID }),
+        body: JSON.stringify({ taskId, status, userId }),
       });
       if (!r.ok) throw new Error("Failed");
       return r.json();
@@ -594,11 +606,29 @@ export default function Dashboard({ params }) {
       qc.invalidateQueries(["goals"]);
       toast.success(
         data.newMomentum != null
-          ? `Momentum: ${data.newMomentum.toFixed(1)}/100`
+          ? `Momentum: ${Number(data.newMomentum).toFixed(1)}/100`
           : "Updated",
       );
     },
     onError: () => toast.error("Update failed"),
+  });
+
+  const deleteGoal = useMutation({
+    mutationFn: async (goalId) => {
+      const r = await fetch(`/api/goals/${goalId}`, {
+        method: "DELETE",
+      });
+      if (!r.ok) throw new Error("Failed to delete goal");
+      return r.json();
+    },
+    onSuccess: (_, deletedId) => {
+      qc.invalidateQueries(["goals"]);
+      toast.success("System deleted");
+      if (id === deletedId) {
+        window.location.href = "/dashboard";
+      }
+    },
+    onError: () => toast.error("Failed to delete system"),
   });
 
   const generateInsights = async () => {
@@ -657,12 +687,12 @@ export default function Dashboard({ params }) {
         message: `${days} days inactive. One task today restarts your streak.`,
       });
     if (
-      goal.momentum_score < 25 &&
+      Number(goal.momentum_score) < 25 &&
       goal.tasks?.some((t) => t.status === "completed")
     )
       out.push({
         type: "momentum",
-        message: `Momentum at ${goal.momentum_score.toFixed(1)}/100 — critically low. Trigger a replan.`,
+        message: `Momentum at ${Number(goal.momentum_score).toFixed(1)}/100 — critically low. Trigger a replan.`,
       });
     const od = (goal.tasks || []).filter(
       (t) =>
@@ -751,7 +781,7 @@ export default function Dashboard({ params }) {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {goals?.map((g) => {
-              const s = g.momentum_score || 0;
+              const s = Number(g.momentum_score || 0);
               return (
                 <motion.div
                   key={g.id}
@@ -822,7 +852,7 @@ export default function Dashboard({ params }) {
     goal?.tasks?.length > 0
       ? Math.round((done.length / goal.tasks.length) * 100)
       : 0;
-  const score = goal?.momentum_score || 0;
+  const score = Number(goal?.momentum_score || 0);
   const streak = goal?.execution_streak || 0;
   const bd = goal?.momentum_breakdown || null;
   const shownInsights = insights || goal?.insights || [];
@@ -919,17 +949,33 @@ export default function Dashboard({ params }) {
             Active Systems
           </div>
           {goals?.map((g) => (
-            <button
+            <div
               key={g.id}
-              onClick={() => (window.location.href = `/dashboard/${g.id}`)}
-              className={`w-full text-left px-3 py-2 rounded text-sm truncate transition-all ${
+              className={`group flex items-center justify-between w-full text-left px-2 py-1.5 rounded text-sm transition-all ${
                 g.id === id
                   ? "bg-[#fff3ea] text-[#ff6600] font-bold"
                   : "text-[#777] hover:bg-[#f7f7f7]"
               }`}
             >
-              {g.title}
-            </button>
+              <button
+                onClick={() => (window.location.href = `/dashboard/${g.id}`)}
+                className="flex-1 truncate text-left py-1 pl-1"
+              >
+                {g.title}
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (confirm("Are you sure you want to delete this system?")) {
+                    deleteGoal.mutate(g.id);
+                  }
+                }}
+                className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-50 hover:text-red-500 rounded transition-all text-[#ccc]"
+                title="Delete System"
+              >
+                <Trash2 size={13} />
+              </button>
+            </div>
           ))}
         </div>
       </aside>

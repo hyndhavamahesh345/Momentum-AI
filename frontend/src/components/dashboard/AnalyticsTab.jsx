@@ -31,7 +31,7 @@ function MomentumTooltip({ active, payload, label }) {
     <div className="bg-white border border-[#e8e8e8] rounded-lg px-3 py-2 text-xs shadow-lg">
       <p className="text-[#999] mb-1">{label}</p>
       <p className="text-[#1a1a1a] font-black text-sm">
-        {payload[0]?.value?.toFixed(1)}
+        {Number(payload[0]?.value || 0).toFixed(1)}
       </p>
       <p className="text-[#bbb]">momentum score</p>
     </div>
@@ -183,7 +183,7 @@ export default function AnalyticsTab({ goal }) {
             : "flat"
         : "flat";
     return {
-      momentum: { value: cur.toFixed(1), trend },
+      momentum: { value: Number(cur || 0).toFixed(1), trend },
       streak: { value: goal.execution_streak || 0 },
       completed: { value: completed.length, total: tasks.length },
       pEff: { value: pEff !== null ? `${pEff}%` : "N/A" },
@@ -281,7 +281,7 @@ export default function AnalyticsTab({ goal }) {
             className="text-xs font-black px-2.5 py-1 rounded-full"
             style={{ background: `${areaColor}15`, color: areaColor }}
           >
-            {lastScore.toFixed(1)} current
+            {Number(lastScore || 0).toFixed(1)} current
           </div>
         </div>
 

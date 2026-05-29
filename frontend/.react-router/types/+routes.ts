@@ -20,29 +20,6 @@ type Pages = {
   "/api/auth/token": {
     params: {};
   };
-  "/api/goals": {
-    params: {};
-  };
-  "/api/goals/generate": {
-    params: {};
-  };
-  "/api/goals/replan": {
-    params: {};
-  };
-  "/api/goals/:id": {
-    params: {
-      "id": string;
-    };
-  };
-  "/api/insights/generate": {
-    params: {};
-  };
-  "/api/momentum/calculate": {
-    params: {};
-  };
-  "/api/tasks/update": {
-    params: {};
-  };
   "/dashboard": {
     params: {};
   };
@@ -56,7 +33,7 @@ type Pages = {
 type RouteFiles = {
   "root.tsx": {
     id: "root";
-    page: "/" | "/api/auth/expo-web-success" | "/api/auth/token" | "/api/goals" | "/api/goals/generate" | "/api/goals/replan" | "/api/goals/:id" | "/api/insights/generate" | "/api/momentum/calculate" | "/api/tasks/update" | "/dashboard" | "/dashboard/:id";
+    page: "/" | "/api/auth/expo-web-success" | "/api/auth/token" | "/dashboard" | "/dashboard/:id";
   };
   "./page.jsx": {
     id: "page";
@@ -69,34 +46,6 @@ type RouteFiles = {
   "./api/auth/token/route.js": {
     id: "api/auth/token/route";
     page: "/api/auth/token";
-  };
-  "./api/goals/route.js": {
-    id: "api/goals/route";
-    page: "/api/goals";
-  };
-  "./api/goals/generate/route.js": {
-    id: "api/goals/generate/route";
-    page: "/api/goals/generate";
-  };
-  "./api/goals/replan/route.js": {
-    id: "api/goals/replan/route";
-    page: "/api/goals/replan";
-  };
-  "./api/goals/[id]/route.js": {
-    id: "api/goals/[id]/route";
-    page: "/api/goals/:id";
-  };
-  "./api/insights/generate/route.js": {
-    id: "api/insights/generate/route";
-    page: "/api/insights/generate";
-  };
-  "./api/momentum/calculate/route.js": {
-    id: "api/momentum/calculate/route";
-    page: "/api/momentum/calculate";
-  };
-  "./api/tasks/update/route.js": {
-    id: "api/tasks/update/route";
-    page: "/api/tasks/update";
   };
   "./dashboard/page.jsx": {
     id: "dashboard/page";
@@ -113,13 +62,6 @@ type RouteModules = {
   "page": typeof import("./src/app/./page.jsx");
   "api/auth/expo-web-success/route": typeof import("./src/app/./api/auth/expo-web-success/route.js");
   "api/auth/token/route": typeof import("./src/app/./api/auth/token/route.js");
-  "api/goals/route": typeof import("./src/app/./api/goals/route.js");
-  "api/goals/generate/route": typeof import("./src/app/./api/goals/generate/route.js");
-  "api/goals/replan/route": typeof import("./src/app/./api/goals/replan/route.js");
-  "api/goals/[id]/route": typeof import("./src/app/./api/goals/[id]/route.js");
-  "api/insights/generate/route": typeof import("./src/app/./api/insights/generate/route.js");
-  "api/momentum/calculate/route": typeof import("./src/app/./api/momentum/calculate/route.js");
-  "api/tasks/update/route": typeof import("./src/app/./api/tasks/update/route.js");
   "dashboard/page": typeof import("./src/app/./dashboard/page.jsx");
   "dashboard/[id]/page": typeof import("./src/app/./dashboard/[id]/page.jsx");
 };

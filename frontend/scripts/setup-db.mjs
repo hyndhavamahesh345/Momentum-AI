@@ -47,10 +47,10 @@ try {
   const statements = schemaSQL
     .split(';')
     .map((s) => s.trim())
-    .filter((s) => s.length > 0 && !s.startsWith('--'));
+    .filter((s) => s.length > 0);
 
   for (const stmt of statements) {
-    await sql.unsafe(stmt);
+    await sql(stmt);
   }
 
   console.log('✅  All tables and indexes created successfully!\n');

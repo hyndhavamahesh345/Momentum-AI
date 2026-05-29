@@ -1,6 +1,6 @@
 import { Brain, Target, TrendingUp, RotateCcw, Activity, CheckCircle } from "lucide-react";
 
-export const MOCK_USER_ID = "user_hackathon_2026";
+
 
 export const EXAMPLE_GOALS = [
   "Launch a SaaS startup in 30 days",

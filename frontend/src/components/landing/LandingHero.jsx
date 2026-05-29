@@ -2,20 +2,28 @@ import React, { useState } from "react";
 import { motion } from "motion/react";
 import { Zap, ArrowRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { MOCK_USER_ID, EXAMPLE_GOALS } from "./constants";
+import { EXAMPLE_GOALS } from "./constants";
+import { useAuth } from "@/store/auth";
 
 export function LandingHero() {
   const [goalInput, setGoalInput] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const { userId, openLoginModal } = useAuth();
 
   const generateRoadmap = async () => {
     if (!goalInput.trim()) return;
+
+    if (!userId) {
+      openLoginModal();
+      return;
+    }
+
     setIsGenerating(true);
     try {
       const res = await fetch("/api/goals/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ goal: goalInput, userId: MOCK_USER_ID }),
+        body: JSON.stringify({ goal: goalInput, userId }),
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));

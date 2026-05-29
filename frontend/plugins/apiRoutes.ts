@@ -30,17 +30,17 @@ export function apiRoutesPlugin(): Plugin {
       const compat = `
 
 // ─── React Router v7 Resource Route Compatibility (auto-injected) ────────────
-export async function loader({ request }) {
-  if (typeof GET !== 'undefined') return GET(request);
+export async function loader({ request, params }) {
+  if (typeof GET !== 'undefined') return GET(request, { params });
   return new Response(null, { status: 405, statusText: 'Method Not Allowed' });
 }
 
-export async function action({ request }) {
+export async function action({ request, params }) {
   const method = request.method.toUpperCase();
-  if (method === 'POST'   && typeof POST   !== 'undefined') return POST(request);
-  if (method === 'PUT'    && typeof PUT    !== 'undefined') return PUT(request);
-  if (method === 'PATCH'  && typeof PATCH  !== 'undefined') return PATCH(request);
-  if (method === 'DELETE' && typeof DELETE !== 'undefined') return DELETE(request);
+  if (method === 'POST'   && typeof POST   !== 'undefined') return POST(request, { params });
+  if (method === 'PUT'    && typeof PUT    !== 'undefined') return PUT(request, { params });
+  if (method === 'PATCH'  && typeof PATCH  !== 'undefined') return PATCH(request, { params });
+  if (method === 'DELETE' && typeof DELETE !== 'undefined') return DELETE(request, { params });
   return new Response(null, { status: 405, statusText: 'Method Not Allowed' });
 }
 `;
