@@ -35,8 +35,8 @@ When you fall behind, the AI automatically reprioritizes your queue and gives yo
 ### 📊 Execution Analytics
 Trajectory charts, velocity graphs, and behavioral DNA — so you can see exactly how you execute.
 
-### ✅ Accountability Agent
-Detects inactivity and momentum drops proactively. Nudges you before you fall behind, not after.
+### 🔐 Lightweight Authentication
+Secure, multi-tenant LocalStorage-based authentication allowing users to maintain isolated execution environments.
 
 ---
 
@@ -44,17 +44,15 @@ Detects inactivity and momentum drops proactively. Nudges you before you fall be
 
 | Layer | Technology |
 |-------|-----------|
-| **Framework** | [React Router v7](https://reactrouter.com/) (Full-stack) |
-| **UI** | [Chakra UI](https://chakra-ui.com/) + [Tailwind CSS](https://tailwindcss.com/) + [shadcn/ui](https://ui.shadcn.com/) |
+| **Frontend Framework** | [React Router v7](https://reactrouter.com/) (Client-side) |
+| **Backend API** | Node.js + [Express](https://expressjs.com/) |
+| **UI** | [Chakra UI](https://chakra-ui.com/) + [Tailwind CSS](https://tailwindcss.com/) + [lucide-react](https://lucide.dev/) |
 | **Animations** | [Motion (Framer Motion)](https://motion.dev/) |
 | **Database** | [NeonDB](https://neon.tech/) (Serverless Postgres) |
-| **AI** | [OpenAI API](https://platform.openai.com/) |
-| **Auth** | [Auth.js](https://authjs.dev/) via Hono |
+| **AI** | [OpenAI API](https://platform.openai.com/) (`gpt-4o-mini` with structured JSON outputs) |
 | **Charts** | [Recharts](https://recharts.org/) |
 | **State** | [Zustand](https://zustand-demo.pmnd.rs/) + [TanStack Query](https://tanstack.com/query) |
 | **Build Tool** | [Vite](https://vitejs.dev/) |
-| **Runtime** | Node.js / [Bun](https://bun.sh/) |
-| **Testing** | [Vitest](https://vitest.dev/) + [Testing Library](https://testing-library.com/) |
 
 ---
 
@@ -62,21 +60,18 @@ Detects inactivity and momentum drops proactively. Nudges you before you fall be
 
 ```
 Momentum-AI/
-├── backend/                               # Server-side API & Database
-│   └── ...                                # (Your chosen backend framework)
-└── frontend/                              # Web Application
+├── backend/                               # Node.js Express API Server
+│   ├── config/                            # Database connection (NeonDB)
+│   ├── routes/                            # API Routes (Goals, Tasks, Insights)
+│   ├── server.js                          # Express Entry Point
+│   └── .env                               # Backend Environment Variables
+└── frontend/                              # React SPA (Vite)
     ├── src/
-    │   ├── app/
-    │   │   ├── api/               # Client-side API integrations
-    │   │   ├── dashboard/         # Dashboard pages
-    │   │   └── page.jsx           # Landing page
-    │   ├── components/
-    │   │   ├── landing/           # Landing page components
-    │   │   └── dashboard/         # Dashboard components
-    │   ├── hooks/                 # Custom React hooks
-    │   ├── integrations/          # Third-party integrations
-    │   └── lib/                   # Utilities & helpers
-    ├── plugins/                   # Vite/build plugins
+    │   ├── app/                           # Page Routes (Dashboard, Landing)
+    │   ├── components/                    # UI Components
+    │   ├── hooks/                         # Custom React hooks
+    │   └── store/                         # Zustand Global State
+    ├── vite.config.ts                     # Vite Config (with Backend Proxy)
     └── package.json
 ```
 
@@ -86,7 +81,7 @@ Momentum-AI/
 
 ### Prerequisites
 
-- **Node.js** v18+ or **Bun** v1.0+
+- **Node.js** v18+
 - A [NeonDB](https://neon.tech/) account (free tier works)
 - An [OpenAI](https://platform.openai.com/) API key
 
@@ -97,18 +92,14 @@ git clone https://github.com/hyndhavamahesh345/Momentum-AI.git
 cd Momentum-AI
 ```
 
-### 2. Frontend Setup
+### 2. Set up the Backend (API Server)
 
 ```bash
-cd frontend
+cd backend
 npm install
-# or
-bun install
 ```
 
-### 3. Set up environment variables
-
-Create a `.env` file in `frontend/`:
+Create a `.env` file in `backend/`:
 
 ```env
 # NeonDB / Postgres — get from https://console.neon.tech → your project → Connection string
@@ -118,23 +109,30 @@ DATABASE_URL=your_neondb_connection_string
 OPENAI_API_KEY=your_openai_api_key
 ```
 
-### 4. Start the frontend development server
+Start the backend server (runs on port 5000):
+
+```bash
+npm run dev
+# or
+node server.js
+```
+
+### 3. Set up the Frontend (React App)
+
+Open a new terminal window:
+
+```bash
+cd frontend
+npm install
+```
+
+Start the frontend development server:
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173) in your browser.
-
----
-
-## 🧪 Running Tests
-
-```bash
-npm run test
-# or
-npx vitest
-```
+Open [http://localhost:4000](http://localhost:4000) in your browser. The Vite development server automatically proxies `/api/*` requests to the backend server.
 
 ---
 
@@ -142,13 +140,14 @@ npx vitest
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/api/goals/generate` | Generate a full goal execution system |
-| `GET` | `/api/goals` | List all goals |
-| `GET/PUT` | `/api/goals/:id` | Get or update a specific goal |
-| `POST` | `/api/goals/replan` | Trigger AI replanning |
-| `POST` | `/api/tasks/update` | Update task status |
-| `POST` | `/api/momentum/calculate` | Calculate momentum score |
-| `POST` | `/api/insights/generate` | Generate AI behavioral insights |
+| `POST` | `/api/goals/generate` | Generate a full goal execution system via OpenAI |
+| `GET` | `/api/goals?userId=...` | List all goals for a specific user |
+| `GET/PUT`| `/api/goals/:id` | Get or update a specific goal |
+| `DELETE`| `/api/goals/:id` | Delete a goal and all associated metadata |
+| `POST` | `/api/goals/replan` | Trigger AI replanning for stuck tasks |
+| `POST` | `/api/tasks/update` | Update task status and trigger real-time momentum score changes |
+| `POST` | `/api/momentum/calculate` | Calculate real-time momentum score |
+| `POST` | `/api/insights/generate` | Generate AI behavioral insights based on task completion |
 
 ---
 
