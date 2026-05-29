@@ -62,29 +62,22 @@ Detects inactivity and momentum drops proactively. Nudges you before you fall be
 
 ```
 Momentum-AI/
-├── anything/
-│   └── apps/
-│       └── web/
-│           ├── src/
-│           │   ├── app/
-│           │   │   ├── api/               # Server-side API routes
-│           │   │   │   ├── goals/         # Goal generation, replanning
-│           │   │   │   ├── insights/      # AI insights generation
-│           │   │   │   ├── momentum/      # Momentum score calculation
-│           │   │   │   └── tasks/         # Task updates
-│           │   │   ├── dashboard/         # Dashboard pages
-│           │   │   └── page.jsx           # Landing page
-│           │   ├── components/
-│           │   │   ├── landing/           # Landing page components
-│           │   │   └── dashboard/         # Dashboard components
-│           │   ├── hooks/                 # Custom React hooks
-│           │   ├── integrations/          # Third-party integrations
-│           │   └── lib/                   # Utilities & DB helpers
-│           ├── scripts/
-│           │   └── setup-db.sql           # Database schema
-│           ├── plugins/                   # Vite/build plugins
-│           └── package.json
-└── web/                                   # Additional web assets
+├── backend/                               # Server-side API & Database
+│   └── ...                                # (Your chosen backend framework)
+└── frontend/                              # Web Application
+    ├── src/
+    │   ├── app/
+    │   │   ├── api/               # Client-side API integrations
+    │   │   ├── dashboard/         # Dashboard pages
+    │   │   └── page.jsx           # Landing page
+    │   ├── components/
+    │   │   ├── landing/           # Landing page components
+    │   │   └── dashboard/         # Dashboard components
+    │   ├── hooks/                 # Custom React hooks
+    │   ├── integrations/          # Third-party integrations
+    │   └── lib/                   # Utilities & helpers
+    ├── plugins/                   # Vite/build plugins
+    └── package.json
 ```
 
 ---
@@ -101,12 +94,13 @@ Momentum-AI/
 
 ```bash
 git clone https://github.com/hyndhavamahesh345/Momentum-AI.git
-cd Momentum-AI/anything/apps/web
+cd Momentum-AI
 ```
 
-### 2. Install dependencies
+### 2. Frontend Setup
 
 ```bash
+cd frontend
 npm install
 # or
 bun install
@@ -114,7 +108,7 @@ bun install
 
 ### 3. Set up environment variables
 
-Create a `.env` file in `anything/apps/web/`:
+Create a `.env` file in `frontend/`:
 
 ```env
 # NeonDB / Postgres — get from https://console.neon.tech → your project → Connection string
@@ -124,13 +118,7 @@ DATABASE_URL=your_neondb_connection_string
 OPENAI_API_KEY=your_openai_api_key
 ```
 
-### 4. Set up the database
-
-```bash
-node scripts/setup-db.mjs
-```
-
-### 5. Start the development server
+### 4. Start the frontend development server
 
 ```bash
 npm run dev
