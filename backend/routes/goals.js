@@ -6,7 +6,7 @@ const router = express.Router();
 // GET /api/goals
 router.get('/', async (req, res) => {
   try {
-    const userId = req.query.userId;
+    const userId = req.user.id;
     if (!userId) {
       return res.status(400).json({ error: "User ID is required" });
     }
@@ -96,32 +96,39 @@ router.get('/:id', async (req, res) => {
 // POST /api/goals/generate
 router.post('/generate', async (req, res) => {
   try {
-    const { goal, userId } = req.body;
+    console.log("Received /generate request:", req.body);
+    const { goal } = req.body;
+    const userId = req.user.id;
 
     if (!goal || !userId) {
+      console.log("Missing goal or userId");
       return res.status(400).json({ error: "Goal and User ID are required" });
     }
 
+    console.log("Inserting goal into database...");
     const [goalRecord] = await sql`
       INSERT INTO goals (user_id, title, status)
       VALUES (${userId}, ${goal}, 'active')
       RETURNING *
     `;
+    console.log("Goal inserted. Calling OpenRouter...");
 
-    const aiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+    const aiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "HTTP-Referer": "http://localhost:4000",
+        "X-Title": "Momentum AI",
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: process.env.AI_MODEL || "openai/gpt-4o-mini",
         messages: [
           {
             role: "system",
             content: `You are the Momentum AI Planning Agent. Your job is to take a high-level goal and decompose it into a structured execution roadmap with real learning resources.
 
-Breakdown the goal into 2-3 high-level milestones, and for each milestone, 2-4 actionable, granular tasks.
+Breakdown the goal into EXACTLY 3 high-level milestones, and for each milestone, 2-3 highly actionable, granular tasks. Keep descriptions extremely concise to maximize speed, but provide a complete structural roadmap.
 
 For EVERY task, provide 1-2 learning resources. You can use generic or placeholder URLs (like https://youtube.com/results?search_query=...) if you don't know the exact link.
 - YouTube videos: use real YouTube video URLs (e.g. https://www.youtube.com/watch?v=...)
@@ -164,13 +171,13 @@ CRITICAL: You MUST output ONLY a valid JSON object with the following structure:
 
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text();
-      console.error("OpenAI API error:", errorText);
+      console.error("OpenRouter API error:", errorText);
       throw new Error(`AI Agent failed: ${aiResponse.statusText}`);
     }
 
     const aiData = await aiResponse.json();
     const messageContent = aiData.choices?.[0]?.message?.content;
-    if (!messageContent) throw new Error("OpenAI returned empty response");
+    if (!messageContent) throw new Error("OpenRouter returned empty response");
 
     let roadmap;
     try {
@@ -234,14 +241,16 @@ router.post('/replan', async (req, res) => {
       WHERE goal_id = ${goalId} AND status != 'completed'
     `;
 
-    const aiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+    const aiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "HTTP-Referer": "http://localhost:4000",
+        "X-Title": "Momentum AI",
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: process.env.AI_MODEL || "openai/gpt-4o-mini",
         messages: [
           {
             role: "system",
@@ -298,6 +307,222 @@ Return ONLY a valid JSON object with the following structure:
     return res.json({ success: true, newTasksAdded: replan.newTasks.length });
   } catch (error) {
     console.error("Error in replan-roadmap:", error);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/goals/probability — AI Success Probability Score
+router.post('/probability', async (req, res) => {
+  try {
+    const { goalId } = req.body;
+    if (!goalId) return res.status(400).json({ error: "goalId is required" });
+    if (!process.env.OPENROUTER_API_KEY) return res.status(500).json({ error: "OpenRouter API key not configured" });
+
+    const [goal] = await sql`SELECT * FROM goals WHERE id = ${goalId}`;
+    if (!goal) return res.status(404).json({ error: "Goal not found" });
+
+    const tasks = await sql`SELECT * FROM tasks WHERE goal_id = ${goalId} ORDER BY priority DESC, impact_score DESC`;
+    const milestones = await sql`SELECT * FROM milestones WHERE goal_id = ${goalId} ORDER BY order_index`;
+    const momentumHistory = await sql`SELECT score, recorded_at FROM momentum_history WHERE goal_id = ${goalId} ORDER BY recorded_at DESC LIMIT 14`;
+
+    const totalTasks = tasks.length;
+    const completedTasks = tasks.filter(t => t.status === "completed").length;
+    const highPriorityPending = tasks.filter(t => t.priority === "high" && t.status !== "completed");
+    const overdueTasks = tasks.filter(t => t.due_date && new Date(t.due_date) < new Date() && t.status !== "completed");
+    const completedMilestones = milestones.filter(m => m.status === "completed").length;
+    const streak = goal.execution_streak || 0;
+    const momentumScore = goal.momentum_score || 0;
+    const daysSinceActive = goal.last_active_at ? Math.floor((Date.now() - new Date(goal.last_active_at).getTime()) / (1000 * 60 * 60 * 24)) : 0;
+    const totalEstimatedHours = tasks.reduce((sum, t) => sum + (t.estimated_hours || 0), 0);
+    const completedHours = tasks.filter(t => t.status === "completed").reduce((sum, t) => sum + (t.estimated_hours || 0), 0);
+
+    const recentTrend = momentumHistory.length >= 2
+      ? (Number(momentumHistory[0]?.score || 0) - Number(momentumHistory[momentumHistory.length - 1]?.score || 0)).toFixed(1)
+      : "N/A";
+
+    const aiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "HTTP-Referer": "http://localhost:4000",
+        "X-Title": "Momentum AI",
+      },
+      body: JSON.stringify({
+        model: process.env.AI_MODEL || "openai/gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: `You are Momentum AI's Probability Engine — an expert at predicting goal success based on execution data.
+Analyze the user's execution state and predict their probability of achieving this goal.
+
+Consider these factors:
+- Task completion rate and velocity
+- Momentum score trajectory
+- Execution streak consistency
+- Overdue tasks and timeline risks
+- Priority focus accuracy
+- Remaining workload vs. demonstrated capacity
+
+Return ONLY valid JSON:
+{
+  "probability": number (0-100),
+  "confidence": "high" | "medium" | "low",
+  "strengths": ["string", "string"] (2-3 positive signals),
+  "risks": ["string", "string"] (2-3 risk factors),
+  "recommendation": "string" (one specific, actionable sentence)
+}`
+          },
+          {
+            role: "user",
+            content: `Goal: ${goal.title}
+Description: ${goal.description || "Not specified"}
+
+EXECUTION STATE:
+- Progress: ${completedTasks}/${totalTasks} tasks (${totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0}%)
+- Milestones: ${completedMilestones}/${milestones.length} completed
+- Momentum Score: ${Number(momentumScore).toFixed(1)}/100
+- Momentum Trend (14d): ${recentTrend}
+- Execution Streak: ${streak} consecutive days
+- Days Since Last Activity: ${daysSinceActive}
+- Overdue Tasks: ${overdueTasks.length}
+- High Priority Pending: ${highPriorityPending.length}
+- Time Invested: ${completedHours}h of ${totalEstimatedHours}h estimated
+- Created: ${new Date(goal.created_at).toLocaleDateString()}
+
+Predict the success probability for this goal.`
+          }
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.6,
+      }),
+    });
+
+    if (!aiResponse.ok) throw new Error(`AI service error: ${aiResponse.status}`);
+
+    const aiData = await aiResponse.json();
+    const rawContent = aiData.choices?.[0]?.message?.content || "{}";
+    let parsed;
+    try {
+      parsed = typeof rawContent === "string" ? JSON.parse(rawContent) : rawContent;
+    } catch (parseErr) {
+      throw new Error("AI returned invalid JSON for probability");
+    }
+
+    return res.json({
+      probability: parsed.probability || 50,
+      confidence: parsed.confidence || "medium",
+      strengths: parsed.strengths || [],
+      risks: parsed.risks || [],
+      recommendation: parsed.recommendation || "",
+    });
+  } catch (error) {
+    console.error("Probability calculation error:", error);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/goals/recover — One-Click Recovery Plan
+router.post('/recover', async (req, res) => {
+  try {
+    const { goalId } = req.body;
+    if (!goalId) return res.status(400).json({ error: "goalId is required" });
+    if (!process.env.OPENROUTER_API_KEY) return res.status(500).json({ error: "OpenRouter API key not configured" });
+
+    const [goal] = await sql`SELECT * FROM goals WHERE id = ${goalId}`;
+    if (!goal) return res.status(404).json({ error: "Goal not found" });
+
+    const tasks = await sql`SELECT * FROM tasks WHERE goal_id = ${goalId} ORDER BY priority DESC, impact_score DESC`;
+    const milestones = await sql`SELECT * FROM milestones WHERE goal_id = ${goalId} ORDER BY order_index`;
+    const momentumHistory = await sql`SELECT score, recorded_at FROM momentum_history WHERE goal_id = ${goalId} ORDER BY recorded_at DESC LIMIT 7`;
+
+    const totalTasks = tasks.length;
+    const completedTasks = tasks.filter(t => t.status === "completed").length;
+    const pendingTasks = tasks.filter(t => t.status !== "completed");
+    const overdueTasks = tasks.filter(t => t.due_date && new Date(t.due_date) < new Date() && t.status !== "completed");
+    const momentumScore = goal.momentum_score || 0;
+    const streak = goal.execution_streak || 0;
+    const daysSinceActive = goal.last_active_at ? Math.floor((Date.now() - new Date(goal.last_active_at).getTime()) / (1000 * 60 * 60 * 24)) : 0;
+
+    const aiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "HTTP-Referer": "http://localhost:4000",
+        "X-Title": "Momentum AI",
+      },
+      body: JSON.stringify({
+        model: process.env.AI_MODEL || "openai/gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: `You are Momentum AI's Recovery Engine — an expert at diagnosing execution failures and creating recovery plans.
+When a user's momentum drops, you analyze what went wrong and create a focused, day-by-day recovery plan to get them back on track.
+
+Be specific, actionable, and realistic. Focus on the MINIMUM VIABLE actions to restore momentum.
+
+Return ONLY valid JSON:
+{
+  "diagnosis": "string" (1-2 sentences explaining what caused the momentum drop),
+  "recoveryPlan": [
+    {
+      "day": number (1, 2, 3...),
+      "focus": "string" (main theme for the day),
+      "tasks": ["string", "string"] (2-3 specific actions)
+    }
+  ] (3-5 days max),
+  "estimatedRecoveryDays": number,
+  "projectedMomentum": number (0-100, expected momentum after recovery),
+  "quickWin": "string" (one thing they can do RIGHT NOW in 15 minutes)
+}`
+          },
+          {
+            role: "user",
+            content: `Goal: ${goal.title}
+Description: ${goal.description || "Not specified"}
+
+CURRENT STATE:
+- Progress: ${completedTasks}/${totalTasks} tasks (${totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0}%)
+- Momentum Score: ${Number(momentumScore).toFixed(1)}/100
+- Execution Streak: ${streak} days
+- Days Since Last Activity: ${daysSinceActive}
+- Overdue Tasks: ${overdueTasks.length}
+
+PENDING TASKS (by priority):
+${pendingTasks.slice(0, 8).map(t => `- [${t.priority}] "${t.title}" (impact: ${t.impact_score}/10, est: ${t.estimated_hours}h)`).join("\n") || "None"}
+
+RECENT MOMENTUM HISTORY:
+${momentumHistory.map(h => `${new Date(h.recorded_at).toLocaleDateString()}: ${Number(h.score).toFixed(1)}`).join("\n") || "No history"}
+
+Create a recovery plan to restore execution momentum.`
+          }
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.7,
+      }),
+    });
+
+    if (!aiResponse.ok) throw new Error(`AI service error: ${aiResponse.status}`);
+
+    const aiData = await aiResponse.json();
+    const rawContent = aiData.choices?.[0]?.message?.content || "{}";
+    let parsed;
+    try {
+      parsed = typeof rawContent === "string" ? JSON.parse(rawContent) : rawContent;
+    } catch (parseErr) {
+      throw new Error("AI returned invalid JSON for recovery plan");
+    }
+
+    return res.json({
+      diagnosis: parsed.diagnosis || "",
+      recoveryPlan: parsed.recoveryPlan || [],
+      estimatedRecoveryDays: parsed.estimatedRecoveryDays || 3,
+      projectedMomentum: parsed.projectedMomentum || 60,
+      quickWin: parsed.quickWin || "",
+    });
+  } catch (error) {
+    console.error("Recovery plan error:", error);
     return res.status(500).json({ error: error.message });
   }
 });

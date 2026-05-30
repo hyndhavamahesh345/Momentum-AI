@@ -4,16 +4,34 @@ import { persist } from 'zustand/middleware';
 export const useAuth = create(
   persist(
     (set) => ({
-      userId: null,
+      userId: null,      // Used across the app (matches user.id)
+      token: null,       // JWT token
+      user: null,        // Full user object
       isLoginModalOpen: false,
-      login: (id) => set({ userId: id, isLoginModalOpen: false }),
-      logout: () => set({ userId: null }),
+      
+      login: (token, user) => set({ 
+        token, 
+        user, 
+        userId: user.id,
+        isLoginModalOpen: false 
+      }),
+      
+      logout: () => set({ 
+        token: null, 
+        user: null, 
+        userId: null 
+      }),
+      
       openLoginModal: () => set({ isLoginModalOpen: true }),
       closeLoginModal: () => set({ isLoginModalOpen: false }),
     }),
     {
-      name: 'momentum-auth-storage', // unique name for localStorage key
-      partialize: (state) => ({ userId: state.userId }), // Only persist userId
+      name: 'momentum-auth-storage', 
+      partialize: (state) => ({ 
+        token: state.token, 
+        user: state.user,
+        userId: state.userId
+      }), 
     }
   )
 );

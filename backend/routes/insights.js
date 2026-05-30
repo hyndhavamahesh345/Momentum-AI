@@ -8,7 +8,7 @@ router.post('/generate', async (req, res) => {
     const { goalId } = req.body;
 
     if (!goalId) return res.status(400).json({ error: "goalId is required" });
-    if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: "OpenAI API key not configured" });
+    if (!process.env.OPENROUTER_API_KEY) return res.status(500).json({ error: "OpenRouter API key not configured" });
 
     const [goal] = await sql`SELECT * FROM goals WHERE id = ${goalId}`;
     if (!goal) return res.status(404).json({ error: "Goal not found" });
@@ -72,14 +72,16 @@ ${overdueTasks.slice(0, 3).map((t) => `- "${t.title}"`).join("\n") || "None"}
 
 Generate 3 insights that would genuinely help this user execute faster and smarter.`;
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "HTTP-Referer": "http://localhost:4000",
+        "X-Title": "Momentum AI",
       },
       body: JSON.stringify({
-        model: "gpt-4o",
+        model: process.env.AI_MODEL_PRO || "openai/gpt-4o",
         messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
         response_format: { type: "json_object" },
         temperature: 0.8,

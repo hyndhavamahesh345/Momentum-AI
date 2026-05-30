@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Zap,
@@ -29,12 +29,23 @@ import {
   Wrench,
   BookOpen,
   Trash2,
+  Heart,
+  Shield,
+  MessageSquare,
+  RefreshCw,
+  Calendar,
+  Send,
+  X,
+  ChevronRight,
+  ArrowUpRight,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { useParams, useNavigate } from "react-router";
 import AnalyticsTab from "@/components/dashboard/AnalyticsTab";
 
 import { useAuth } from "@/store/auth";
+import { apiFetch } from "@/lib/api";
 
 // ─── Momentum Ring ─────────────────────────────────────────────────────────────
 function MomentumRing({ score, size = 72 }) {
@@ -548,8 +559,546 @@ function ReplanPanel({ replan, onDismiss }) {
 }
 
 // ─── MAIN DASHBOARD ────────────────────────────────────────────────────────────
-export default function Dashboard({ params }) {
-  const id = params?.id;
+
+// ─── Execution Health Dashboard ───────────────────────────────────────────────
+function ExecutionHealth({ goal }) {
+  if (!goal) return null;
+  const momentum = Number(goal.momentum_score || 0);
+  const streak = goal.execution_streak || 0;
+  const tasks = goal.tasks || [];
+  const overdue = tasks.filter(t => t.due_date && new Date(t.due_date) < new Date() && t.status !== "completed").length;
+  const daysSinceActive = goal.last_active_at
+    ? Math.floor((Date.now() - new Date(goal.last_active_at).getTime()) / 86400000)
+    : 999;
+
+  const indicators = [
+    {
+      label: "Momentum",
+      status: momentum >= 70 ? "green" : momentum >= 40 ? "yellow" : "red",
+      detail: `${momentum.toFixed(0)}/100`,
+    },
+    {
+      label: "Timeline Risk",
+      status: overdue === 0 ? "green" : overdue <= 2 ? "yellow" : "red",
+      detail: overdue === 0 ? "On track" : `${overdue} overdue`,
+    },
+    {
+      label: "Consistency",
+      status: streak >= 3 ? "green" : streak >= 1 ? "yellow" : "red",
+      detail: streak > 0 ? `${streak}d streak` : "No streak",
+    },
+    {
+      label: "Activity",
+      status: daysSinceActive <= 1 ? "green" : daysSinceActive <= 3 ? "yellow" : "red",
+      detail: daysSinceActive === 0 ? "Today" : daysSinceActive === 1 ? "Yesterday" : `${daysSinceActive}d ago`,
+    },
+  ];
+
+  const colors = {
+    green: { dot: "#16a34a", bg: "#f0fdf4", border: "#d1fae5" },
+    yellow: { dot: "#d97706", bg: "#fffbea", border: "#fed7aa" },
+    red: { dot: "#dc2626", bg: "#fef2f2", border: "#fecaca" },
+  };
+
+  const overall = indicators.filter(i => i.status === "red").length >= 2 ? "critical"
+    : indicators.filter(i => i.status === "red").length >= 1 ? "at-risk"
+    : indicators.filter(i => i.status === "yellow").length >= 2 ? "moderate"
+    : "healthy";
+
+  const overallConfig = {
+    healthy: { label: "Healthy", color: "#16a34a", bg: "#f0fdf4" },
+    moderate: { label: "Moderate", color: "#d97706", bg: "#fffbea" },
+    "at-risk": { label: "At Risk", color: "#d97706", bg: "#fff3ea" },
+    critical: { label: "Critical", color: "#dc2626", bg: "#fef2f2" },
+  }[overall];
+
+  return (
+    <div className="bg-[#f7f7f7] border border-[#e8e8e8] rounded-lg p-3">
+      <div className="flex items-center justify-between mb-2.5">
+        <div className="text-[9px] font-black uppercase tracking-widest text-[#aaa]">
+          Execution Health
+        </div>
+        <span
+          className="text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded"
+          style={{ background: overallConfig.bg, color: overallConfig.color }}
+        >
+          {overallConfig.label}
+        </span>
+      </div>
+      <div className="space-y-1.5">
+        {indicators.map((ind) => {
+          const c = colors[ind.status];
+          return (
+            <div
+              key={ind.label}
+              className="flex items-center gap-2 px-2 py-1.5 rounded"
+              style={{ background: c.bg, border: `1px solid ${c.border}` }}
+            >
+              <div
+                className="w-2 h-2 rounded-full shrink-0"
+                style={{ background: c.dot, boxShadow: `0 0 6px ${c.dot}40` }}
+              />
+              <span className="text-[11px] font-semibold text-[#333] flex-1">{ind.label}</span>
+              <span className="text-[10px] font-bold" style={{ color: c.dot }}>{ind.detail}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Success Probability Gauge ────────────────────────────────────────────────
+function SuccessProbabilityGauge({ probability, confidence, strengths, risks, recommendation, loading, onRefresh }) {
+  const pct = probability || 0;
+  const gaugeColor = pct >= 75 ? "#16a34a" : pct >= 50 ? "#ff6600" : pct >= 30 ? "#d97706" : "#dc2626";
+  const label = pct >= 75 ? "High" : pct >= 50 ? "Moderate" : pct >= 30 ? "Low" : "Critical";
+  const r = 70;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (pct / 100) * circ;
+
+  return (
+    <motion.div
+      key="probability"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="p-6 max-w-3xl mx-auto w-full space-y-5"
+    >
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-black text-[#1a1a1a] text-lg">Success Probability</h3>
+          <p className="text-xs text-[#999]">AI-predicted likelihood of achieving this goal</p>
+        </div>
+        <button
+          onClick={onRefresh}
+          disabled={loading}
+          className="flex items-center gap-2 px-4 py-2 bg-[#ff6600] text-white text-sm font-bold rounded hover:bg-[#e55a00] disabled:opacity-40 transition-colors"
+        >
+          {loading ? (
+            <><Loader2 size={13} className="yc-spin" /> Analyzing...</>
+          ) : (
+            <><Shield size={13} /> Refresh Score</>
+          )}
+        </button>
+      </div>
+
+      {loading && (
+        <div className="flex items-center gap-3 py-16 justify-center text-[#999] text-sm">
+          <Loader2 className="w-4 h-4 yc-spin" /> Probability Engine analyzing execution data...
+        </div>
+      )}
+
+      {!loading && probability != null && (
+        <>
+          {/* Gauge */}
+          <div className="bg-white border border-[#e8e8e8] rounded-xl p-6 flex flex-col md:flex-row items-center gap-8">
+            <div className="flex flex-col items-center gap-2">
+              <svg width="170" height="170" viewBox="0 0 170 170">
+                <circle cx="85" cy="85" r={r} fill="none" stroke="#f0f0f0" strokeWidth="10" />
+                <motion.circle
+                  cx="85" cy="85" r={r} fill="none"
+                  stroke={gaugeColor} strokeWidth="10" strokeLinecap="round"
+                  strokeDasharray={circ}
+                  initial={{ strokeDashoffset: circ }}
+                  animate={{ strokeDashoffset: offset }}
+                  transition={{ duration: 1.5, ease: "easeOut" }}
+                  transform="rotate(-90 85 85)"
+                />
+                <text x="85" y="78" textAnchor="middle" dominantBaseline="middle" fill="#1a1a1a" fontSize="36" fontWeight="900">
+                  {pct}%
+                </text>
+                <text x="85" y="102" textAnchor="middle" fill={gaugeColor} fontSize="11" fontWeight="800">
+                  {label}
+                </text>
+              </svg>
+              {confidence && (
+                <span className="text-[9px] font-black uppercase tracking-widest text-[#bbb]">
+                  {confidence} confidence
+                </span>
+              )}
+            </div>
+
+            <div className="flex-1 space-y-4 w-full">
+              {/* Strengths */}
+              {strengths?.length > 0 && (
+                <div>
+                  <div className="text-[9px] font-black text-[#16a34a] uppercase tracking-widest mb-2">Strengths</div>
+                  <div className="space-y-1.5">
+                    {strengths.map((s, i) => (
+                      <div key={i} className="flex items-start gap-2 text-sm text-[#333]">
+                        <CheckCircle size={14} className="text-[#16a34a] shrink-0 mt-0.5" />
+                        <span>{s}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Risks */}
+              {risks?.length > 0 && (
+                <div>
+                  <div className="text-[9px] font-black text-[#d97706] uppercase tracking-widest mb-2">Risks</div>
+                  <div className="space-y-1.5">
+                    {risks.map((r, i) => (
+                      <div key={i} className="flex items-start gap-2 text-sm text-[#333]">
+                        <AlertTriangle size={14} className="text-[#d97706] shrink-0 mt-0.5" />
+                        <span>{r}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Recommendation */}
+          {recommendation && (
+            <div className="p-4 bg-[#f0f7ff] border border-[#bfdbfe] rounded-xl flex gap-3">
+              <div className="w-8 h-8 rounded-lg bg-white border border-[#bfdbfe] flex items-center justify-center shrink-0">
+                <Lightbulb size={15} className="text-[#2563eb]" />
+              </div>
+              <div>
+                <div className="text-[9px] font-black text-[#2563eb] uppercase tracking-widest mb-1">AI Recommendation</div>
+                <p className="text-sm text-[#333] leading-relaxed">{recommendation}</p>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {!loading && probability == null && (
+        <div className="text-center py-14 bg-white border border-[#e8e8e8] rounded-xl">
+          <div className="w-10 h-10 bg-[#fff3ea] rounded-xl flex items-center justify-center mx-auto mb-3">
+            <Shield className="w-5 h-5 text-[#ff6600]" />
+          </div>
+          <p className="font-bold text-[#1a1a1a] mb-1">No probability score yet</p>
+          <p className="text-sm text-[#888] mb-5">Generate your AI-predicted success likelihood.</p>
+          <button
+            onClick={onRefresh}
+            className="px-5 py-2.5 bg-[#ff6600] text-white text-sm font-bold rounded hover:bg-[#e55a00] transition-colors"
+          >
+            Calculate Probability →
+          </button>
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+// ─── Recovery Plan Panel ──────────────────────────────────────────────────────
+function RecoveryPlanPanel({ recovery, loading, onRecover, onDismiss }) {
+  return (
+    <div className="space-y-4">
+      {!recovery && !loading && (
+        <div className="p-5 bg-gradient-to-r from-[#fef2f2] to-[#fff7ed] border border-[#fecaca] rounded-xl">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 bg-white rounded-xl border border-[#fecaca] flex items-center justify-center shrink-0">
+              <RefreshCw size={18} className="text-[#dc2626]" />
+            </div>
+            <div className="flex-1">
+              <div className="font-bold text-[#1a1a1a] text-sm mb-1">Momentum Recovery Engine</div>
+              <p className="text-xs text-[#888] leading-relaxed mb-3">
+                AI analyzes your execution gaps, reprioritizes tasks, and creates a focused day-by-day recovery plan.
+              </p>
+              <button
+                onClick={onRecover}
+                className="flex items-center gap-2 px-4 py-2 bg-[#dc2626] text-white text-xs font-bold rounded hover:bg-[#b91c1c] transition-colors"
+              >
+                <RefreshCw size={12} /> 🚨 Recover Momentum
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {loading && (
+        <div className="flex items-center gap-3 py-10 justify-center text-[#999] text-sm bg-white border border-[#e8e8e8] rounded-xl">
+          <Loader2 className="w-4 h-4 yc-spin" /> Recovery Engine diagnosing execution state...
+        </div>
+      )}
+
+      {recovery && !loading && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white border border-[#e8e8e8] rounded-xl overflow-hidden"
+        >
+          {/* Header */}
+          <div className="p-5 bg-gradient-to-r from-[#fef2f2] to-[#fff3ea] border-b border-[#fecaca]">
+            <div className="flex justify-between items-start">
+              <div>
+                <div className="text-[9px] font-black text-[#dc2626] tracking-widest mb-1 uppercase">
+                  🚨 Recovery Plan Generated
+                </div>
+                <p className="text-sm font-bold text-[#1a1a1a]">{recovery.diagnosis}</p>
+              </div>
+              <button onClick={onDismiss} className="text-[#ccc] hover:text-[#888] ml-4">✕</button>
+            </div>
+          </div>
+
+          {/* Quick Win */}
+          {recovery.quickWin && (
+            <div className="mx-5 mt-4 p-3 bg-[#f0fdf4] border border-[#d1fae5] rounded-lg flex gap-2">
+              <Zap size={14} className="text-[#16a34a] shrink-0 mt-0.5" />
+              <div>
+                <div className="text-[9px] font-black text-[#16a34a] uppercase tracking-widest mb-0.5">Quick Win (15 min)</div>
+                <p className="text-sm text-[#333]">{recovery.quickWin}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Day-by-day plan */}
+          <div className="p-5 space-y-3">
+            <div className="text-[9px] font-black text-[#aaa] uppercase tracking-widest">Recovery Timeline</div>
+            {recovery.recoveryPlan?.map((day, i) => (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, x: -12 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.1 }}
+                className="flex gap-3"
+              >
+                <div className="flex flex-col items-center">
+                  <div className="w-7 h-7 rounded-full bg-[#ff6600] text-white text-[10px] font-black flex items-center justify-center">
+                    D{day.day}
+                  </div>
+                  {i < (recovery.recoveryPlan.length - 1) && (
+                    <div className="w-px flex-1 bg-[#e8e8e8] mt-1" />
+                  )}
+                </div>
+                <div className="flex-1 pb-3">
+                  <div className="font-semibold text-sm text-[#1a1a1a] mb-1">{day.focus}</div>
+                  <div className="space-y-1">
+                    {day.tasks?.map((task, ti) => (
+                      <div key={ti} className="flex items-start gap-1.5 text-xs text-[#555]">
+                        <ChevronRight size={10} className="text-[#ff6600] shrink-0 mt-0.5" />
+                        <span>{task}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+
+          {/* Footer */}
+          <div className="px-5 py-3 bg-[#f7f7f7] border-t border-[#e8e8e8] flex items-center justify-between">
+            <div className="flex items-center gap-4 text-xs text-[#888]">
+              <span className="flex items-center gap-1"><Clock size={11} /> ~{recovery.estimatedRecoveryDays}d recovery</span>
+              <span className="flex items-center gap-1">
+                <ArrowUpRight size={11} className="text-[#16a34a]" />
+                <span className="font-bold text-[#16a34a]">{recovery.projectedMomentum}</span>/100 projected
+              </span>
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </div>
+  );
+}
+
+// ─── Daily Check-In Modal ─────────────────────────────────────────────────────
+function DailyCheckInModal({ open, onClose, goalId, userId, goalTitle }) {
+  const [step, setStep] = useState("form"); // form | loading | report
+  const [accomplished, setAccomplished] = useState("");
+  const [blockers, setBlockers] = useState("");
+  const [nextSteps, setNextSteps] = useState("");
+  const [report, setReport] = useState(null);
+
+  const handleSubmit = async () => {
+    setStep("loading");
+    try {
+      const r = await apiFetch("/api/checkin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ goalId, accomplished, blockers, nextSteps }),
+      });
+      if (!r.ok) throw new Error("Check-in failed");
+      const data = await r.json();
+      setReport(data);
+      setStep("report");
+    } catch {
+      setStep("form");
+    }
+  };
+
+  const handleClose = () => {
+    setStep("form");
+    setAccomplished("");
+    setBlockers("");
+    setNextSteps("");
+    setReport(null);
+    onClose();
+  };
+
+  if (!open) return null;
+
+  const riskColors = { low: "#16a34a", medium: "#d97706", high: "#dc2626" };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={handleClose} />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto"
+      >
+        {/* Header */}
+        <div className="sticky top-0 bg-white border-b border-[#e8e8e8] px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-[#fff3ea] rounded-lg flex items-center justify-center">
+              <Calendar size={16} className="text-[#ff6600]" />
+            </div>
+            <div>
+              <div className="font-bold text-sm text-[#1a1a1a]">Daily Check-In</div>
+              <div className="text-[10px] text-[#bbb]">{goalTitle}</div>
+            </div>
+          </div>
+          <button onClick={handleClose} className="p-1.5 hover:bg-[#f7f7f7] rounded transition-colors">
+            <X size={16} className="text-[#999]" />
+          </button>
+        </div>
+
+        {/* Form */}
+        {step === "form" && (
+          <div className="p-6 space-y-4">
+            <div>
+              <label className="block text-[10px] font-black text-[#aaa] uppercase tracking-widest mb-1.5">
+                What did you accomplish today?
+              </label>
+              <textarea
+                value={accomplished}
+                onChange={e => setAccomplished(e.target.value)}
+                placeholder="Finished the API endpoints, wrote unit tests..."
+                className="w-full border border-[#e8e8e8] rounded-lg px-3 py-2.5 text-sm text-[#1a1a1a] placeholder-[#ccc] focus:outline-none focus:border-[#ff6600] transition-colors resize-none"
+                rows={3}
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-black text-[#aaa] uppercase tracking-widest mb-1.5">
+                What blocked you?
+              </label>
+              <textarea
+                value={blockers}
+                onChange={e => setBlockers(e.target.value)}
+                placeholder="Deployment issues, unclear requirements..."
+                className="w-full border border-[#e8e8e8] rounded-lg px-3 py-2.5 text-sm text-[#1a1a1a] placeholder-[#ccc] focus:outline-none focus:border-[#ff6600] transition-colors resize-none"
+                rows={2}
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-black text-[#aaa] uppercase tracking-widest mb-1.5">
+                What will you do tomorrow?
+              </label>
+              <textarea
+                value={nextSteps}
+                onChange={e => setNextSteps(e.target.value)}
+                placeholder="Deploy to staging, start user testing..."
+                className="w-full border border-[#e8e8e8] rounded-lg px-3 py-2.5 text-sm text-[#1a1a1a] placeholder-[#ccc] focus:outline-none focus:border-[#ff6600] transition-colors resize-none"
+                rows={2}
+              />
+            </div>
+            <button
+              onClick={handleSubmit}
+              disabled={!accomplished.trim()}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[#ff6600] text-white text-sm font-bold rounded-lg hover:bg-[#e55a00] disabled:opacity-40 transition-colors"
+            >
+              <Send size={14} /> Submit Check-In
+            </button>
+          </div>
+        )}
+
+        {/* Loading */}
+        {step === "loading" && (
+          <div className="p-10 flex flex-col items-center gap-3">
+            <Loader2 className="w-6 h-6 text-[#ff6600] yc-spin" />
+            <p className="text-sm text-[#888]">AI Coach analyzing your check-in...</p>
+          </div>
+        )}
+
+        {/* Report */}
+        {step === "report" && report && (
+          <div className="p-6 space-y-4">
+            <div className="text-[9px] font-black text-[#ff6600] uppercase tracking-widest">Daily Execution Report</div>
+
+            {/* Metrics Row */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-3 bg-[#f7f7f7] border border-[#e8e8e8] rounded-lg text-center">
+                <div className="text-2xl font-black text-[#1a1a1a]">{report.dailyMomentum}</div>
+                <div className="text-[10px] text-[#999]">Daily Momentum</div>
+              </div>
+              <div className="p-3 rounded-lg text-center border" style={{
+                background: `${riskColors[report.riskLevel]}10`,
+                borderColor: `${riskColors[report.riskLevel]}30`,
+              }}>
+                <div className="text-2xl font-black" style={{ color: riskColors[report.riskLevel] }}>
+                  {(report.riskLevel || "medium").toUpperCase()}
+                </div>
+                <div className="text-[10px] text-[#999]">Risk Level</div>
+              </div>
+            </div>
+
+            {/* Risk Reason */}
+            {report.riskReason && (
+              <p className="text-xs text-[#666] italic px-1">{report.riskReason}</p>
+            )}
+
+            {/* Next Focus */}
+            <div className="p-3 bg-[#fff3ea] border border-[#ffd5b0] rounded-lg">
+              <div className="text-[9px] font-black text-[#ff6600] uppercase tracking-widest mb-1">Next Focus</div>
+              <p className="text-sm font-semibold text-[#1a1a1a]">{report.nextFocus}</p>
+            </div>
+
+            {/* Streak Message */}
+            {report.streakMessage && (
+              <div className="flex items-center gap-2 text-xs text-[#d97706]">
+                <Flame size={12} />
+                <span className="font-semibold">{report.streakMessage}</span>
+              </div>
+            )}
+
+            {/* Adjustments */}
+            {report.adjustments?.length > 0 && (
+              <div>
+                <div className="text-[9px] font-black text-[#7c3aed] uppercase tracking-widest mb-2">Suggested Adjustments</div>
+                <div className="space-y-1.5">
+                  {report.adjustments.map((a, i) => (
+                    <div key={i} className="flex items-start gap-2 text-sm text-[#444]">
+                      <ChevronRight size={12} className="text-[#7c3aed] shrink-0 mt-0.5" />
+                      <span>{a}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Encouragement */}
+            {report.encouragement && (
+              <div className="p-3 bg-[#f0fdf4] border border-[#d1fae5] rounded-lg">
+                <div className="text-[9px] font-black text-[#16a34a] uppercase tracking-widest mb-1">💪 Coach Says</div>
+                <p className="text-sm text-[#333] leading-relaxed">{report.encouragement}</p>
+              </div>
+            )}
+
+            <button
+              onClick={handleClose}
+              className="w-full px-4 py-2.5 bg-[#1a1a1a] text-white text-sm font-bold rounded-lg hover:bg-[#333] transition-colors"
+            >
+              Done
+            </button>
+          </div>
+        )}
+      </motion.div>
+    </div>
+  );
+}
+
+export default function Dashboard(props) {
+  const params = useParams();
+  const navigate = useNavigate();
+  const id = params?.id || props.params?.id;
   const qc = useQueryClient();
   const [tab, setTab] = useState("roadmap");
   const [showBreakdown, setShowBreakdown] = useState(false);
@@ -557,6 +1106,13 @@ export default function Dashboard({ params }) {
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [replan, setReplan] = useState(null);
   const [replanLoading, setReplanLoading] = useState(false);
+  
+  // New feature states
+  const [probability, setProbability] = useState(null);
+  const [probabilityLoading, setProbabilityLoading] = useState(false);
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
+  const [checkInOpen, setCheckInOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const { userId, openLoginModal } = useAuth();
   
@@ -571,7 +1127,7 @@ export default function Dashboard({ params }) {
     queryKey: ["goals", userId],
     queryFn: async () => {
       if (!userId) return [];
-      const r = await fetch(`/api/goals?userId=${userId}`);
+      const r = await apiFetch(`/api/goals?userId=${userId}`);
       return r.json();
     },
     enabled: !!userId,
@@ -581,7 +1137,7 @@ export default function Dashboard({ params }) {
     queryKey: ["goal", id],
     queryFn: async () => {
       if (!id) return null;
-      const r = await fetch(`/api/goals/${id}`);
+      const r = await apiFetch(`/api/goals/${id}`);
       return r.json();
     },
     enabled: !!id,
@@ -593,10 +1149,10 @@ export default function Dashboard({ params }) {
 
   const updateTask = useMutation({
     mutationFn: async ({ taskId, status }) => {
-      const r = await fetch("/api/tasks/update", {
+      const r = await apiFetch("/api/tasks/update", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ taskId, status, userId }),
+        body: JSON.stringify({ taskId, status }),
       });
       if (!r.ok) throw new Error("Failed");
       return r.json();
@@ -615,7 +1171,7 @@ export default function Dashboard({ params }) {
 
   const deleteGoal = useMutation({
     mutationFn: async (goalId) => {
-      const r = await fetch(`/api/goals/${goalId}`, {
+      const r = await apiFetch(`/api/goals/${goalId}`, {
         method: "DELETE",
       });
       if (!r.ok) throw new Error("Failed to delete goal");
@@ -625,7 +1181,7 @@ export default function Dashboard({ params }) {
       qc.invalidateQueries(["goals"]);
       toast.success("System deleted");
       if (id === deletedId) {
-        window.location.href = "/dashboard";
+        navigate("/dashboard");
       }
     },
     onError: () => toast.error("Failed to delete system"),
@@ -635,7 +1191,7 @@ export default function Dashboard({ params }) {
     if (!id || insightsLoading) return;
     setInsightsLoading(true);
     try {
-      const r = await fetch("/api/insights/generate", {
+      const r = await apiFetch("/api/insights/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ goalId: id }),
@@ -655,7 +1211,7 @@ export default function Dashboard({ params }) {
     if (!id || replanLoading) return;
     setReplanLoading(true);
     try {
-      const r = await fetch("/api/goals/replan", {
+      const r = await apiFetch("/api/goals/replan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ goalId: id }),
@@ -670,6 +1226,47 @@ export default function Dashboard({ params }) {
       toast.error("Replan failed");
     } finally {
       setReplanLoading(false);
+    }
+  };
+
+  const fetchProbability = async () => {
+    if (!id || probabilityLoading) return;
+    setProbabilityLoading(true);
+    try {
+      const r = await apiFetch("/api/goals/probability", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ goalId: id }),
+      });
+      if (!r.ok) throw new Error();
+      const d = await r.json();
+      setProbability(d);
+      toast.success(`Success probability: ${d.probability}%`);
+    } catch {
+      toast.error("Failed to calculate probability");
+    } finally {
+      setProbabilityLoading(false);
+    }
+  };
+
+  const fetchRecovery = async () => {
+    if (!id || recoveryLoading) return;
+    setRecoveryLoading(true);
+    try {
+      const r = await apiFetch("/api/goals/recover", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ goalId: id }),
+      });
+      if (!r.ok) throw new Error();
+      const d = await r.json();
+      setRecovery(d);
+      toast.success("Recovery plan generated");
+      setTab("strategy");
+    } catch {
+      toast.error("Failed to generate recovery plan");
+    } finally {
+      setRecoveryLoading(false);
     }
   };
 
@@ -745,7 +1342,7 @@ export default function Dashboard({ params }) {
               <span className="text-sm text-[#999]">Systems</span>
             </div>
             <button
-              onClick={() => (window.location.href = "/")}
+              onClick={() => navigate("/")}
               className="flex items-center gap-1.5 px-4 py-2 bg-[#ff6600] text-white text-sm font-bold rounded hover:bg-[#e55a00] transition-colors"
             >
               <Plus size={14} /> New Goal
@@ -786,7 +1383,7 @@ export default function Dashboard({ params }) {
                 <motion.div
                   key={g.id}
                   whileHover={{ y: -2 }}
-                  onClick={() => (window.location.href = `/dashboard/${g.id}`)}
+                  onClick={() => navigate(`/dashboard/${g.id}`)}
                   className="bg-white border border-[#e8e8e8] rounded-xl p-6 cursor-pointer hover:border-[#ff6600]/50 hover:shadow-sm transition-all"
                 >
                   <div className="flex justify-between items-start mb-5">
@@ -860,9 +1457,12 @@ export default function Dashboard({ params }) {
   return (
     <div className="min-h-screen bg-[#f7f7f7] flex">
       {/* ── Sidebar ── */}
-      <aside className="w-64 bg-white border-r border-[#e8e8e8] hidden lg:flex flex-col shrink-0">
+      <aside className="w-64 bg-white border-r border-[#e8e8e8] hidden md:flex flex-col shrink-0">
         {/* Brand */}
-        <div className="h-14 border-b border-[#e8e8e8] flex items-center gap-2.5 px-4">
+        <div 
+          onClick={() => navigate('/')}
+          className="h-14 border-b border-[#e8e8e8] flex items-center gap-2.5 px-4 cursor-pointer hover:bg-[#f7f7f7] transition-colors"
+        >
           <div className="w-6 h-6 bg-[#ff6600] rounded flex items-center justify-center">
             <Zap className="w-3.5 h-3.5 text-white" />
           </div>
@@ -911,6 +1511,10 @@ export default function Dashboard({ params }) {
               </motion.div>
             )}
           </AnimatePresence>
+          {/* Execution Health Dashboard */}
+          <div className="mt-3">
+            <ExecutionHealth goal={goal} />
+          </div>
         </div>
 
         {/* Nav */}
@@ -941,12 +1545,33 @@ export default function Dashboard({ params }) {
             active={tab === "analytics"}
             onClick={() => setTab("analytics")}
           />
+          <NavItem
+            icon={<Shield />}
+            label="Success Score"
+            active={tab === "probability"}
+            onClick={() => { setTab("probability"); if (!probability) fetchProbability(); }}
+          />
+          <NavItem
+            icon={<MessageSquare />}
+            label="Daily Check-In"
+            active={false}
+            onClick={() => setCheckInOpen(true)}
+          />
         </div>
 
         {/* Goals list */}
         <div className="p-3 flex-1 overflow-y-auto">
-          <div className="text-[9px] font-black text-[#ccc] uppercase tracking-widest mb-2 px-2">
-            Active Systems
+          <div className="flex items-center justify-between mb-2 px-2">
+            <div className="text-[9px] font-black text-[#ccc] uppercase tracking-widest">
+              Active Systems
+            </div>
+            <button
+              onClick={() => navigate("/")}
+              className="p-1 hover:bg-[#f7f7f7] hover:text-[#ff6600] rounded text-[#ccc] transition-colors"
+              title="New System"
+            >
+              <Plus size={12} />
+            </button>
           </div>
           {goals?.map((g) => (
             <div
@@ -958,7 +1583,7 @@ export default function Dashboard({ params }) {
               }`}
             >
               <button
-                onClick={() => (window.location.href = `/dashboard/${g.id}`)}
+                onClick={() => navigate(`/dashboard/${g.id}`)}
                 className="flex-1 truncate text-left py-1 pl-1"
               >
                 {g.title}
@@ -966,9 +1591,7 @@ export default function Dashboard({ params }) {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (confirm("Are you sure you want to delete this system?")) {
-                    deleteGoal.mutate(g.id);
-                  }
+                  setDeleteTarget(g);
                 }}
                 className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-50 hover:text-red-500 rounded transition-all text-[#ccc]"
                 title="Delete System"
@@ -986,11 +1609,13 @@ export default function Dashboard({ params }) {
         <header className="h-14 bg-white border-b border-[#e8e8e8] flex items-center justify-between px-6 shrink-0">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => (window.location.href = "/dashboard")}
-              className="p-1.5 hover:bg-[#f7f7f7] rounded transition-colors"
+              onClick={() => navigate("/dashboard")}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 hover:bg-[#f7f7f7] rounded transition-colors text-[#999] hover:text-[#1a1a1a]"
             >
-              <ArrowLeft size={16} className="text-[#999]" />
+              <ArrowLeft size={16} />
+              <span className="text-xs font-semibold">Dashboard</span>
             </button>
+            <div className="h-4 w-px bg-[#e8e8e8]"></div>
             <div>
               <h2 className="text-sm font-bold text-[#1a1a1a] leading-tight">
                 {goal?.title}
@@ -1002,6 +1627,25 @@ export default function Dashboard({ params }) {
           </div>
           <div className="flex items-center gap-2">
             <button
+              onClick={() => setCheckInOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#666] border border-[#e8e8e8] rounded hover:border-[#ff6600]/40 hover:text-[#ff6600] transition-all"
+            >
+              <MessageSquare size={12} /> Check In
+            </button>
+            {(score < 50 || alerts.length > 0) && (
+              <button
+                onClick={fetchRecovery}
+                disabled={recoveryLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-[#dc2626] rounded hover:bg-[#b91c1c] transition-all disabled:opacity-40"
+              >
+                {recoveryLoading ? (
+                  <Loader2 size={12} className="yc-spin" />
+                ) : (
+                  <RefreshCw size={12} />
+                )} Recover
+              </button>
+            )}
+            <button
               onClick={triggerReplan}
               disabled={replanLoading}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#666] border border-[#e8e8e8] rounded hover:border-[#ff6600]/40 hover:text-[#ff6600] transition-all disabled:opacity-40"
@@ -1011,7 +1655,7 @@ export default function Dashboard({ params }) {
               ) : (
                 <RotateCcw size={12} />
               )}{" "}
-              Adaptive Replan
+              Replan
             </button>
             <div
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded border cursor-pointer"
@@ -1309,6 +1953,15 @@ export default function Dashboard({ params }) {
                     />
                   )}
                 </AnimatePresence>
+
+                {/* Recovery Plan */}
+                <RecoveryPlanPanel
+                  recovery={recovery}
+                  loading={recoveryLoading}
+                  onRecover={fetchRecovery}
+                  onDismiss={() => setRecovery(null)}
+                />
+
                 <BreakdownPanel breakdown={bd} />
 
                 {insightsLoading && (
@@ -1385,9 +2038,77 @@ export default function Dashboard({ params }) {
 
             {/* Analytics */}
             {tab === "analytics" && <AnalyticsTab goal={goal} />}
+
+            {/* Success Probability */}
+            {tab === "probability" && (
+              <SuccessProbabilityGauge
+                probability={probability?.probability}
+                confidence={probability?.confidence}
+                strengths={probability?.strengths}
+                risks={probability?.risks}
+                recommendation={probability?.recommendation}
+                loading={probabilityLoading}
+                onRefresh={fetchProbability}
+              />
+            )}
           </AnimatePresence>
         </div>
       </main>
+
+      {/* Daily Check-In Modal */}
+      <AnimatePresence>
+        <DailyCheckInModal
+          open={checkInOpen}
+          onClose={() => setCheckInOpen(false)}
+          goalId={id}
+          userId={userId}
+          goalTitle={goal?.title}
+        />
+
+        {/* Custom Delete Confirmation Modal */}
+        {deleteTarget && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setDeleteTarget(null)}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 z-10 m-4 text-center"
+            >
+              <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertTriangle size={24} className="text-red-500" />
+              </div>
+              <h3 className="text-lg font-black text-[#1a1a1a] mb-2">Delete Execution System?</h3>
+              <p className="text-sm text-[#666] mb-6">
+                Are you sure you want to permanently delete <span className="font-bold text-[#1a1a1a]">{deleteTarget.title}</span>? This action cannot be undone.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setDeleteTarget(null)}
+                  className="flex-1 py-2.5 px-4 rounded-xl border border-[#e8e8e8] text-[#666] font-bold hover:bg-[#f7f7f7] transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    deleteGoal.mutate(deleteTarget.id);
+                    setDeleteTarget(null);
+                  }}
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-red-500 text-white font-bold hover:bg-red-600 transition-all"
+                >
+                  Delete
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
       <style
         jsx
         global

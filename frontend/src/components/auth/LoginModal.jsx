@@ -1,18 +1,50 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Zap, LogIn } from 'lucide-react';
+import { X, Zap, LogIn, UserPlus, Loader2 } from 'lucide-react';
 import { useAuth } from '@/store/auth';
+import { toast } from 'sonner';
 
 export function LoginModal({ isOpen, onClose }) {
-  const [username, setUsername] = useState('');
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  
   const { login } = useAuth();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!username.trim()) return;
+    if (!email.trim() || !password.trim()) return;
     
-    login(username.trim().toLowerCase().replace(/\s+/g, '_'));
-    onClose();
+    setLoading(true);
+    try {
+      const endpoint = isRegistering ? '/api/auth/register' : '/api/auth/login';
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Authentication failed');
+      }
+
+      login(data.token, data.user);
+      toast.success(isRegistering ? "Account created!" : "Welcome back!");
+      onClose();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleMode = () => {
+    setIsRegistering(!isRegistering);
+    setEmail('');
+    setPassword('');
   };
 
   return (
@@ -47,35 +79,69 @@ export function LoginModal({ isOpen, onClose }) {
               </div>
               
               <div className="text-center mb-8">
-                <h2 className="text-2xl font-black text-[#1a1a1a] mb-2">Welcome Back</h2>
-                <p className="text-[#666] text-sm">Enter a username to access your execution systems.</p>
+                <h2 className="text-2xl font-black text-[#1a1a1a] mb-2">
+                  {isRegistering ? "Create Account" : "Welcome Back"}
+                </h2>
+                <p className="text-[#666] text-sm">
+                  {isRegistering 
+                    ? "Sign up to start building momentum." 
+                    : "Sign in to access your execution systems."}
+                </p>
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
-                  <label htmlFor="username" className="block text-xs font-bold text-[#1a1a1a] uppercase tracking-wider mb-2">
-                    Username
+                  <label className="block text-xs font-bold text-[#1a1a1a] uppercase tracking-wider mb-2">
+                    Email
                   </label>
                   <input
-                    id="username"
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder="e.g. hackathon_user_1"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="hello@startup.com"
                     className="w-full px-4 py-3 bg-[#f7f7f7] border border-[#e8e8e8] rounded-xl focus:bg-white focus:border-[#ff6600] focus:ring-4 focus:ring-[#ff6600]/10 transition-all outline-none text-[#1a1a1a]"
-                    autoFocus
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-bold text-[#1a1a1a] uppercase tracking-wider mb-2">
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-4 py-3 bg-[#f7f7f7] border border-[#e8e8e8] rounded-xl focus:bg-white focus:border-[#ff6600] focus:ring-4 focus:ring-[#ff6600]/10 transition-all outline-none text-[#1a1a1a]"
+                    required
                   />
                 </div>
                 
                 <button
                   type="submit"
-                  disabled={!username.trim()}
+                  disabled={loading || !email.trim() || !password.trim()}
                   className="w-full flex items-center justify-center gap-2 py-3 bg-[#1a1a1a] text-white font-bold rounded-xl hover:bg-[#ff6600] disabled:opacity-50 disabled:hover:bg-[#1a1a1a] transition-all"
                 >
-                  <LogIn size={18} />
-                  Access Dashboard
+                  {loading ? (
+                    <Loader2 size={18} className="animate-spin" />
+                  ) : (
+                    isRegistering ? <UserPlus size={18} /> : <LogIn size={18} />
+                  )}
+                  {isRegistering ? "Create Account" : "Sign In"}
                 </button>
               </form>
+
+              <div className="mt-6 text-center">
+                <button
+                  onClick={toggleMode}
+                  className="text-sm font-semibold text-[#666] hover:text-[#ff6600] transition-colors"
+                >
+                  {isRegistering 
+                    ? "Already have an account? Sign in" 
+                    : "Need an account? Create one"}
+                </button>
+              </div>
             </div>
           </motion.div>
         </div>

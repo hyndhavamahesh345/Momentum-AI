@@ -4,7 +4,7 @@ import { useAuth } from "@/store/auth";
 import { LoginModal } from "../auth/LoginModal";
 
 export function LandingNav() {
-  const { userId, logout, isLoginModalOpen, openLoginModal, closeLoginModal } = useAuth();
+  const { user, userId, logout, isLoginModalOpen, openLoginModal, closeLoginModal } = useAuth();
 
   const handleActionClick = () => {
     if (userId) {
@@ -42,11 +42,19 @@ export function LandingNav() {
             
             {userId ? (
               <div className="flex items-center gap-4">
+                {user?.email && (
+                  <div 
+                    className="w-7 h-7 bg-[#ff6600] text-white rounded-full flex items-center justify-center font-bold text-[11px] uppercase cursor-pointer"
+                    title={user.email}
+                  >
+                    {user.email.charAt(0)}
+                  </div>
+                )}
                 <button
                   onClick={handleActionClick}
                   className="text-sm font-semibold text-[#ff6600] hover:underline transition-all"
                 >
-                  Dashboard →
+                  Dashboard
                 </button>
                 <button
                   onClick={logout}

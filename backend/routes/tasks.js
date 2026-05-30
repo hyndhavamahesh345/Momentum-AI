@@ -5,7 +5,8 @@ const router = express.Router();
 
 router.post('/update', async (req, res) => {
   try {
-    const { taskId, status, userId } = req.body;
+    const { taskId, status } = req.body;
+    const userId = req.user.id;
 
     if (!taskId || !status) {
       return res.status(400).json({ error: "Task ID and Status are required" });

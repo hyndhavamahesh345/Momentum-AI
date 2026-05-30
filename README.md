@@ -35,8 +35,11 @@ When you fall behind, the AI automatically reprioritizes your queue and gives yo
 ### 📊 Execution Analytics
 Trajectory charts, velocity graphs, and behavioral DNA — so you can see exactly how you execute.
 
+### ⚡ Seamless Navigation & History
+Access your "Recent Systems" directly from the landing page. Quickly switch between active goals via the sidebar with a streamlined UI.
+
 ### 🔐 Lightweight Authentication
-Secure, multi-tenant LocalStorage-based authentication allowing users to maintain isolated execution environments.
+Secure, multi-tenant LocalStorage-based authentication allowing users to maintain isolated execution environments with an elegant, simplified profile view.
 
 ---
 
@@ -49,7 +52,7 @@ Secure, multi-tenant LocalStorage-based authentication allowing users to maintai
 | **UI** | [Chakra UI](https://chakra-ui.com/) + [Tailwind CSS](https://tailwindcss.com/) + [lucide-react](https://lucide.dev/) |
 | **Animations** | [Motion (Framer Motion)](https://motion.dev/) |
 | **Database** | [NeonDB](https://neon.tech/) (Serverless Postgres) |
-| **AI** | [OpenAI API](https://platform.openai.com/) (`gpt-4o-mini` with structured JSON outputs) |
+| **AI** | [OpenRouter API](https://openrouter.ai/) (`gpt-4o-mini` with structured JSON outputs) |
 | **Charts** | [Recharts](https://recharts.org/) |
 | **State** | [Zustand](https://zustand-demo.pmnd.rs/) + [TanStack Query](https://tanstack.com/query) |
 | **Build Tool** | [Vite](https://vitejs.dev/) |
@@ -83,7 +86,7 @@ Momentum-AI/
 
 - **Node.js** v18+
 - A [NeonDB](https://neon.tech/) account (free tier works)
-- An [OpenAI](https://platform.openai.com/) API key
+- An [OpenAI](https://openrouter.ai/) API key
 
 ### 1. Clone the repo
 
@@ -105,8 +108,8 @@ Create a `.env` file in `backend/`:
 # NeonDB / Postgres — get from https://console.neon.tech → your project → Connection string
 DATABASE_URL=your_neondb_connection_string
 
-# OpenAI — get from https://platform.openai.com/api-keys
-OPENAI_API_KEY=your_openai_api_key
+# OpenAI — get from https://openrouter.ai/api-keys
+OPENROUTER_API_KEY=your_openai_api_key
 ```
 
 Start the backend server (runs on port 5000):

@@ -62,8 +62,8 @@ export default defineConfig({
       overlay: false,
     },
     proxy: {
-      '^/api/(goals|insights|momentum|tasks)': {
-        target: 'http://localhost:5000',
+      '^/api/(goals|insights|momentum|tasks|checkin|auth)': {
+        target: 'http://127.0.0.1:5000',
         changeOrigin: true,
       },
     },

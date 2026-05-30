@@ -4,11 +4,26 @@ import { Zap, ArrowRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { EXAMPLE_GOALS } from "./constants";
 import { useAuth } from "@/store/auth";
+import { useNavigate } from "react-router";
+import { apiFetch } from "@/lib/api";
+import { useQuery } from "@tanstack/react-query";
+import { Clock } from "lucide-react";
 
 export function LandingHero() {
   const [goalInput, setGoalInput] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const { userId, openLoginModal } = useAuth();
+  const navigate = useNavigate();
+
+  const { data: goals } = useQuery({
+    queryKey: ["goals", userId],
+    queryFn: async () => {
+      if (!userId) return [];
+      const r = await apiFetch(`/api/goals?userId=${userId}`);
+      return r.json();
+    },
+    enabled: !!userId,
+  });
 
   const generateRoadmap = async () => {
     if (!goalInput.trim()) return;
@@ -20,10 +35,9 @@ export function LandingHero() {
 
     setIsGenerating(true);
     try {
-      const res = await fetch("/api/goals/generate", {
+      const res = await apiFetch("/api/goals/generate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ goal: goalInput, userId }),
+        body: JSON.stringify({ goal: goalInput }),
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
@@ -33,7 +47,7 @@ export function LandingHero() {
       if (data.goalId) {
         toast.success("Execution system ready.");
         if (typeof window !== "undefined") {
-          window.location.href = `/dashboard/${data.goalId}`;
+          navigate(`/dashboard/${data.goalId}`);
         }
       } else {
         toast.error(data.error || "Something went wrong. Try again.");
@@ -104,15 +118,32 @@ export function LandingHero() {
         </div>
 
         <div className="mt-4 flex flex-wrap justify-center gap-2">
-          {EXAMPLE_GOALS.map((g) => (
-            <button
-              key={g}
-              onClick={() => setGoalInput(g)}
-              className="text-xs px-3 py-1.5 bg-[#f7f7f7] border border-[#e8e8e8] rounded-full text-[#555] hover:border-[#ff6600] hover:text-[#ff6600] transition-all"
-            >
-              {g}
-            </button>
-          ))}
+          {userId && goals && goals.length > 0 ? (
+            <>
+              <div className="w-full text-xs font-black text-[#ccc] uppercase tracking-widest mt-2 mb-1 flex items-center justify-center gap-1">
+                <Clock size={12} /> Recent History
+              </div>
+              {goals.slice(0, 5).map((g) => (
+                <button
+                  key={g.id}
+                  onClick={() => navigate(`/dashboard/${g.id}`)}
+                  className="text-xs px-3 py-1.5 bg-[#fff3ea] border border-[#ffd5b0] rounded-full text-[#ff6600] font-semibold hover:bg-[#ff6600] hover:text-white transition-all shadow-sm flex items-center gap-1.5"
+                >
+                  <Zap size={10} className={g.momentum_score > 50 ? "text-current" : "opacity-50"} /> {g.title}
+                </button>
+              ))}
+            </>
+          ) : (
+            EXAMPLE_GOALS.map((g) => (
+              <button
+                key={g}
+                onClick={() => setGoalInput(g)}
+                className="text-xs px-3 py-1.5 bg-[#f7f7f7] border border-[#e8e8e8] rounded-full text-[#555] hover:border-[#ff6600] hover:text-[#ff6600] transition-all"
+              >
+                {g}
+              </button>
+            ))
+          )}
         </div>
       </motion.div>
       <style jsx global>{`
