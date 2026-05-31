@@ -12,7 +12,9 @@ export async function apiFetch(endpoint, options = {}) {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const baseUrl = 'https://momentum-ai-82ts.onrender.com';
+  const baseUrl = import.meta.env.MODE === 'development'
+    ? ''
+    : 'https://momentum-ai-82ts.onrender.com';
   const url = endpoint.startsWith('/') ? `${baseUrl}${endpoint}` : endpoint;
 
   const response = await fetch(url, {

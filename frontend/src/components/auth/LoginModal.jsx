@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, Zap, LogIn, UserPlus, Loader2 } from 'lucide-react';
 import { useAuth } from '@/store/auth';
 import { toast } from 'sonner';
+import { apiFetch } from '@/lib/api';
 
 export function LoginModal({ isOpen, onClose }) {
   const [isRegistering, setIsRegistering] = useState(false);
@@ -19,7 +20,7 @@ export function LoginModal({ isOpen, onClose }) {
     setLoading(true);
     try {
       const endpoint = isRegistering ? '/api/auth/register' : '/api/auth/login';
-      const response = await fetch(endpoint, {
+      const response = await apiFetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })

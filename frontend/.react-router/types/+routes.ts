@@ -14,12 +14,6 @@ type Pages = {
   "/": {
     params: {};
   };
-  "/api/auth/expo-web-success": {
-    params: {};
-  };
-  "/api/auth/token": {
-    params: {};
-  };
   "/dashboard": {
     params: {};
   };
@@ -33,19 +27,11 @@ type Pages = {
 type RouteFiles = {
   "root.tsx": {
     id: "root";
-    page: "/" | "/api/auth/expo-web-success" | "/api/auth/token" | "/dashboard" | "/dashboard/:id";
+    page: "/" | "/dashboard" | "/dashboard/:id";
   };
   "./page.jsx": {
     id: "page";
     page: "/";
-  };
-  "./api/auth/expo-web-success/route.js": {
-    id: "api/auth/expo-web-success/route";
-    page: "/api/auth/expo-web-success";
-  };
-  "./api/auth/token/route.js": {
-    id: "api/auth/token/route";
-    page: "/api/auth/token";
   };
   "./dashboard/page.jsx": {
     id: "dashboard/page";
@@ -60,8 +46,6 @@ type RouteFiles = {
 type RouteModules = {
   "root": typeof import("./src/app/root.tsx");
   "page": typeof import("./src/app/./page.jsx");
-  "api/auth/expo-web-success/route": typeof import("./src/app/./api/auth/expo-web-success/route.js");
-  "api/auth/token/route": typeof import("./src/app/./api/auth/token/route.js");
   "dashboard/page": typeof import("./src/app/./dashboard/page.jsx");
   "dashboard/[id]/page": typeof import("./src/app/./dashboard/[id]/page.jsx");
 };
