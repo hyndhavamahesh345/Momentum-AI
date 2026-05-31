@@ -590,7 +590,7 @@ function ExecutionHealth({ goal }) {
     {
       label: "Activity",
       status: daysSinceActive <= 1 ? "green" : daysSinceActive <= 3 ? "yellow" : "red",
-      detail: daysSinceActive === 0 ? "Today" : daysSinceActive === 1 ? "Yesterday" : `${daysSinceActive}d ago`,
+      detail: daysSinceActive === 999 ? "No activity" : daysSinceActive === 0 ? "Today" : daysSinceActive === 1 ? "Yesterday" : `${daysSinceActive}d ago`,
     },
   ];
 
@@ -1106,10 +1106,10 @@ export default function Dashboard(props) {
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [replan, setReplan] = useState(null);
   const [replanLoading, setReplanLoading] = useState(false);
-  
   // New feature states
   const [probability, setProbability] = useState(null);
   const [probabilityLoading, setProbabilityLoading] = useState(false);
+  const [recovery, setRecovery] = useState(null);
   const [recoveryLoading, setRecoveryLoading] = useState(false);
   const [checkInOpen, setCheckInOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -1132,6 +1132,13 @@ export default function Dashboard(props) {
     },
     enabled: !!userId,
   });
+
+  // Redirect to first goal if on /dashboard with no id
+  useEffect(() => {
+    if (!id && goals?.length > 0) {
+      navigate(`/dashboard/${goals[0].id}`, { replace: true });
+    }
+  }, [id, goals, navigate]);
 
   const { data: goal, isLoading: goalLoading } = useQuery({
     queryKey: ["goal", id],
